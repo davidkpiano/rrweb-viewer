@@ -1,0 +1,19 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  font-family: 'Inter', sans-serif;
+}
+
+.rr-player {
+  @apply rounded-lg overflow-hidden;
+}
+
+.rr-player__frame {
+  @apply border border-gray-300;
+}
+
+.rr-player__controller {
+  @apply bg-gray-100 border-t border-gray-300;
+}
