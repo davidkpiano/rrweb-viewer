@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Play, Pause, RotateCcw } from 'lucide-react';
 import rrwebPlayer from 'rrweb-player';
 import 'rrweb-player/dist/style.css';
+import pako from 'pako';
 
 function App() {
   const [player, setPlayer] = useState<rrwebPlayer | null>(null);
@@ -19,7 +20,18 @@ function App() {
     }
 
     fetch(jsonUrl)
-      .then((response) => response.json())
+      .then(async (response) => {
+        const contentType = response.headers.get('content-type');
+        const arrayBuffer = await response.arrayBuffer();
+
+        if (jsonUrl.endsWith('.gz') || contentType?.includes('gzip')) {
+          const uint8Array = new Uint8Array(arrayBuffer);
+          const decompressed = pako.inflate(uint8Array, { to: 'string' });
+          return JSON.parse(decompressed);
+        }
+
+        return JSON.parse(new TextDecoder().decode(arrayBuffer));
+      })
       .then((data) => {
         const events = data.events;
         if (!Array.isArray(events)) {
