@@ -14,9 +14,7 @@ function App() {
     const playerContainer = document.getElementById('player-container')!;
 
     if (!jsonUrl) {
-      setError(
-        'No JSON URL provided. Please add a "url" query parameter. ' + jsonUrl
-      );
+      setError('No JSON URL provided. Please add a "url" query parameter.');
       return;
     }
 
