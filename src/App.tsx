@@ -19,7 +19,13 @@ function App() {
       return;
     }
 
-    fetch(jsonUrl)
+    fetch(jsonUrl, {
+      headers: {
+        Accept: 'application/json, application/gzip',
+        'Content-Type': 'application/json',
+      },
+      mode: 'cors',
+    })
       .then(async (response) => {
         const contentType = response.headers.get('content-type');
         const arrayBuffer = await response.arrayBuffer();
@@ -29,7 +35,6 @@ function App() {
           const decompressed = pako.inflate(uint8Array, { to: 'string' });
           return JSON.parse(decompressed);
         }
-
         return JSON.parse(new TextDecoder().decode(arrayBuffer));
       })
       .then((data) => {
