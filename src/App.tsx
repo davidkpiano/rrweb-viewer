@@ -1,71 +1,33 @@
 import { useEffect, useState } from 'react';
-import { Play, Pause, RotateCcw } from 'lucide-react';
 import rrwebPlayer from 'rrweb-player';
 import 'rrweb-player/dist/style.css';
 import pako from 'pako';
-
-function parseMultipleJsonObjects(text: string): Array<{
-  events: any[];
-}> {
-  const results = [];
-  let startIndex = 0;
-
-  // Find all potential split points
-  for (let i = 0; i < text.length - 1; i++) {
-    if (text[i] === '}' && text[i + 1] === '{') {
-      try {
-        // Try parsing from start to this point
-        const chunk = text.substring(startIndex, i + 1);
-        JSON.parse(chunk); // If this succeeds, we found a valid split point
-
-        results.push(JSON.parse(chunk));
-        startIndex = i + 1;
-      } catch {
-        // Not a valid split point, continue searching
-        continue;
-      }
-    }
-  }
-
-  // Don't forget the last chunk
-  if (startIndex < text.length) {
-    const lastChunk = text.substring(startIndex);
-    results.push(JSON.parse(lastChunk));
-  }
-
-  return results;
-}
+import { parseMultipleJsonObjects } from './utils';
+import { eventWithTime } from '@rrweb/types';
 
 function App() {
   const [player, setPlayer] = useState<rrwebPlayer | null>(null);
-  const [isPlaying, setIsPlaying] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
 
   const handleFile = async (file: File) => {
+    if (player) {
+      console.error('Player already exists. Please reload the page.');
+      return;
+    }
     try {
       const arrayBuffer = await file.arrayBuffer();
-      console.log(arrayBuffer);
       const uint8Array = new Uint8Array(arrayBuffer);
-      console.log(uint8Array);
 
       const text = new TextDecoder().decode(arrayBuffer);
-      console.log(text);
-
-      // Check for gzip magic numbers (1f 8b)
       const isGzipped = uint8Array[0] === 0x1f && uint8Array[1] === 0x8b;
-      console.log({ isGzipped });
-
-      let data;
+      let data: Array<{ events: eventWithTime[] }>;
       if (isGzipped) {
         const decompressed = pako.inflate(uint8Array, { to: 'string' });
         data = parseMultipleJsonObjects(decompressed);
       } else {
-        // Try parsing as regular JSON
-        data = parseMultipleJsonObjects(new TextDecoder().decode(arrayBuffer));
+        data = parseMultipleJsonObjects(text);
       }
-
-      console.log(data);
 
       const events = data.map((obj) => obj.events).flat();
       if (!Array.isArray(events)) {
@@ -79,8 +41,6 @@ function App() {
       }
 
       const playerContainer = document.getElementById('player-container')!;
-      // playerContainer.innerHTML = '';
-
       const newPlayer = new rrwebPlayer({
         target: playerContainer,
         props: {
@@ -92,11 +52,16 @@ function App() {
       });
       setPlayer(newPlayer);
       setError(null);
-    } catch (err: any) {
+    } catch (err) {
       console.error('Error processing file:', err);
-      setError(`Failed to process the file: ${err.message}`);
+      setError(
+        `Failed to process the file: ${
+          err instanceof Error ? err.message : 'Unknown error'
+        }`
+      );
     }
   };
+
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(true);
@@ -112,6 +77,7 @@ function App() {
     setIsDragging(false);
 
     const file = e.dataTransfer.files[0];
+
     if (
       file &&
       (file.name.endsWith('.gz') || file.type === 'application/gzip')
@@ -128,7 +94,9 @@ function App() {
     const playerContainer = document.getElementById('player-container')!;
 
     if (!jsonUrl) {
-      setError('No JSON URL provided. Please add a "url" query parameter.');
+      console.error(
+        'No JSON URL provided. Please add a "url" query parameter.'
+      );
       return;
     }
 
@@ -137,21 +105,16 @@ function App() {
         Accept: 'application/json, application/gzip',
         'Content-Type': 'application/json',
       },
-      // mode: 'no-cors',
     })
       .then(async (response) => {
-        const contentType = response.headers.get('content-type');
         const arrayBuffer = await response.arrayBuffer();
         const uint8Array = new Uint8Array(arrayBuffer);
 
         let data;
         try {
-          // Try parsing as JSON first
           data = JSON.parse(new TextDecoder().decode(arrayBuffer));
         } catch {
-          // If JSON parsing fails, try decompressing as gzip
           const decompressed = pako.inflate(uint8Array, { to: 'string' });
-
           data = JSON.parse(decompressed);
         }
 
@@ -171,9 +134,6 @@ function App() {
           throw new Error('The JSON file does not contain valid rrweb events.');
         }
 
-        console.log('First event:', events[0]);
-        console.log('Total events:', events.length);
-
         const newPlayer = new rrwebPlayer({
           target: playerContainer,
           props: {
@@ -187,50 +147,25 @@ function App() {
       })
       .catch((err) => {
         console.error('Error loading or parsing JSON:', err);
-        setError(`Failed to load or parse the JSON file: ${err.message}`);
+        setError(
+          `Failed to load or parse the JSON file: ${
+            err instanceof Error ? err.message : 'Unknown error'
+          }`
+        );
       });
 
     return () => {
-      // delete playerContainer's children
       playerContainer.innerHTML = '';
     };
   }, []);
 
-  const handlePlayPause = () => {
-    if (player) {
-      if (isPlaying) {
-        player.pause();
-      } else {
-        player.play();
-      }
-      setIsPlaying(!isPlaying);
-    }
-  };
-
-  const handleRestart = () => {
-    if (player) {
-      player.goto(0);
-      player.play();
-      setIsPlaying(true);
-    }
-  };
-
-  // if (error) {
-  //   return (
-  //     <div className="min-h-screen bg-gray-100 flex items-center justify-center">
-  //       <div className="bg-white p-8 rounded-lg shadow-md max-w-lg w-full">
-  //         <h1 className="text-2xl font-bold text-red-600 mb-4">Error</h1>
-  //         <p className="text-gray-700 mb-4">{error}</p>
-  //         <p className="text-sm text-gray-500">
-  //           Please check the console for more detailed error information.
-  //         </p>
-  //       </div>
-  //     </div>
-  //   );
-  // }
-
   return (
     <div className="min-h-screen bg-gray-100 flex flex-col items-center justify-center p-4">
+      {error && (
+        <div className="mb-2 text-red-600 bg-red-100 px-4 py-2 rounded-lg font-bold">
+          {error}
+        </div>
+      )}
       <div
         id="player-container"
         className={`bg-white rounded-lg shadow-lg overflow-hidden ${
@@ -246,28 +181,33 @@ function App() {
           <div className="text-gray-500 text-center p-8">
             <p className="text-xl mb-2">Drop your .gz file here</p>
             <p className="text-sm">or use the URL parameter</p>
+
+            <input
+              type="file"
+              accept=".gz"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) {
+                  handleDrop({
+                    preventDefault: () => {},
+                    dataTransfer: {
+                      files: [file],
+                    },
+                  } as unknown as React.DragEvent<HTMLDivElement>);
+                }
+              }}
+              className="mt-4 block w-full text-sm text-gray-500
+                            file:mr-4 file:py-2 file:px-4
+                            file:rounded-full file:border-0
+                            file:text-sm file:font-semibold
+                            file:bg-blue-50 file:text-blue-700
+                            hover:file:bg-blue-100  border-blue-50 border-2 rounded-full p-1"
+            />
           </div>
         )}
       </div>
-      {player && (
-        <div className="mt-6 flex space-x-4">
-          <button
-            onClick={handlePlayPause}
-            className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded flex items-center"
-          >
-            {isPlaying ? <Pause className="mr-2" /> : <Play className="mr-2" />}
-            {isPlaying ? 'Pause' : 'Play'}
-          </button>
-          <button
-            onClick={handleRestart}
-            className="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded flex items-center"
-          >
-            <RotateCcw className="mr-2" />
-            Restart
-          </button>
-        </div>
-      )}
     </div>
   );
 }
+
 export default App;
